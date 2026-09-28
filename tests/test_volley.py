@@ -137,6 +137,16 @@ class UnitTests(unittest.TestCase):
         self.assertIn('for="niveau"', script)
         self.assertIn('for="sexe"', script)
         self.assertIn(":focus-visible", css)
+        self.assertIn("--line: #6f6256", css)
+        self.assertIn(".top :focus-visible", css)
+        self.assertIn('aria-describedby="aide-niveau"', script)
+        self.assertIn("Fil d’Ariane", script)
+        self.assertIn("s’ouvre dans un nouvel onglet", script)
+        self.assertIn("Les mots utiles", script)
+        self.assertNotIn("return raw(list.map", script)
+        self.assertNotIn("return raw(matches.map", script)
+        self.assertIn('id="effacer"', script)
+        self.assertNotIn('id="reset"', script)
         self.assertIn("text/calendar", (ROOT / "app.py").read_text(encoding="utf-8"))
 
 

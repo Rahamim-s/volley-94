@@ -58,12 +58,7 @@ FEATURED = {
     "name": "Association sportive amicale Maisons-Alfort",
     "short_name": "ASA VB MA",
     "city": "Maisons-Alfort",
-    "note": (
-        "Nom public : Association sportive amicale Maisons-Alfort (ASA VB MA). "
-        "Dans les compétitions, le club s’écrit ASA MAISONS ALFORT, n° 0946822. "
-        "Ce n’est pas l’ASAS, une autre association, à Paris. "
-        "Pas de site internet du club."
-    ),
+    "note": "À ne pas confondre avec l’ASAS, une autre association, à Paris.",
 }
 
 # Villes lisibles dans le nom officiel du club. Pas d’adresse inventée.
@@ -113,11 +108,11 @@ LIMITS = [
 ]
 
 SOURCES = [
-    {"label": "Liste des clubs du comité", "url": DEPARTMENT["clubs_url"]},
-    {"label": "Page résultats du comité", "url": DEPARTMENT["results_url"]},
-    {"label": "Compétitions FFVB du Val-de-Marne", "url": "https://www.ffvbbeach.org/ffvbapp/resu/vbspo_home.php?codent=PTIDF94"},
-    {"label": "Compétitions de la ligue Île-de-France", "url": "https://www.ffvbbeach.org/ffvbapp/resu/vbspo_home.php?codent=LIIDF"},
-    {"label": "Guide municipal de Maisons-Alfort (nom du club)", "url": "https://maisons-alfort.fr/wp-content/uploads/2018/12/2026-2027-temps-libre.pdf"},
+    {"label": "Liste des clubs du Val-de-Marne", "url": DEPARTMENT["clubs_url"]},
+    {"label": "Résultats du Val-de-Marne", "url": DEPARTMENT["results_url"]},
+    {"label": "Compétitions officielles du Val-de-Marne", "url": "https://www.ffvbbeach.org/ffvbapp/resu/vbspo_home.php?codent=PTIDF94"},
+    {"label": "Compétitions d’Île-de-France", "url": "https://www.ffvbbeach.org/ffvbapp/resu/vbspo_home.php?codent=LIIDF"},
+    {"label": "Guide de la ville de Maisons-Alfort (nom du club)", "url": "https://maisons-alfort.fr/wp-content/uploads/2018/12/2026-2027-temps-libre.pdf"},
 ]
 
 
@@ -858,7 +853,7 @@ def main() -> int:
             empty_poules.append(poule["code"])
     if empty_poules:
         warnings.append(
-            "Poules sans match publié pour l’instant : " + ", ".join(empty_poules) + "."
+            "Groupes sans match publié pour l’instant : " + ", ".join(empty_poules) + "."
         )
 
     data = build(clubs, kept, csv_by_poule, season, warnings)

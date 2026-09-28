@@ -5,15 +5,17 @@
   --card: #fffdf8;
   --navy: #102a43;
   --clay: #9a3412;
-  --line: #e4d8c8;
+  --line: #6f6256;
   --tint: #fff7ed;
   --good: #14532d;
-  --focus: #9a3412;
 }
 
 * { box-sizing: border-box; }
 
-html { scroll-behavior: smooth; }
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 8rem;
+}
 
 body {
   margin: 0;
@@ -22,7 +24,11 @@ body {
   font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
   font-size: 1.05rem;
   line-height: 1.45;
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
+
+h1, h2, h3, p, li, dd { overflow-wrap: break-word; }
 
 h1, h2, h3 {
   font-family: Georgia, "Iowan Old Style", Palatino, serif;
@@ -31,7 +37,7 @@ h1, h2, h3 {
 }
 
 h1 { font-size: clamp(1.7rem, 4vw, 2.35rem); margin: 0 0 0.4rem; }
-h2 { font-size: 1.45rem; margin: 0 0 0.35rem; }
+h2 { font-size: 1.45rem; margin: 1.3rem 0 0.35rem; }
 h3 { font-size: 1.15rem; margin: 0; }
 
 p { margin: 0.35rem 0; }
@@ -46,11 +52,18 @@ a:hover { text-decoration-thickness: 2px; }
   background: white;
   color: var(--navy);
   padding: 0.5rem 0.8rem;
-  z-index: 5;
+  z-index: 6;
 }
-.skip:focus { top: 0.5rem; }
+.skip:focus {
+  top: 0.5rem;
+  outline: 3px solid #ffffff;
+  outline-offset: 3px;
+}
 
 .top {
+  position: sticky;
+  top: 0;
+  z-index: 4;
   background: var(--navy);
   color: white;
 }
@@ -84,23 +97,23 @@ nav a {
   min-height: 44px;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   padding: 0.35rem 0.8rem;
   border-radius: 999px;
+  scroll-margin-top: 8rem;
 }
 nav a[aria-current="page"] { background: white; color: var(--navy); }
-nav a:hover { text-decoration: underline; }
+nav a:hover, nav a:focus-visible { text-decoration: underline; }
 
 main {
   max-width: 46rem;
   margin: 0 auto;
   padding: 1.25rem 1rem 3rem;
 }
-main:focus { outline: none; }
-main:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
 
 .lead { color: var(--muted); font-size: 1.05rem; }
 
-.featured, .card, .panel {
+.featured, .card, .panel, .empty {
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -110,20 +123,20 @@ main:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
 
 .featured {
   background: var(--tint);
-  border-color: #fdba74;
+  border: 2px solid var(--clay);
 }
 
 .eyebrow {
   margin: 0;
   color: var(--clay);
-  font-size: 0.82rem;
+  font-size: 0.95rem;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .meta, .hint { color: var(--muted); }
 .hint { font-size: 0.95rem; }
+.crumbs { margin-bottom: 0.6rem; }
+.crumbs span { color: var(--muted); }
 
 .filters {
   display: grid;
@@ -147,10 +160,12 @@ input, select {
   width: 100%;
   min-height: 44px;
   padding: 0.45rem 0.7rem;
-  border: 1px solid #c4b8a8;
+  border: 2px solid var(--line);
   border-radius: 10px;
   background: white;
 }
+
+::placeholder { color: var(--muted); opacity: 1; }
 
 .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
 
@@ -166,11 +181,16 @@ input, select {
   color: white;
   text-decoration: none;
   cursor: pointer;
+  text-align: center;
 }
 a.button:hover { color: white; }
 button.ghost, a.ghost {
-  background: transparent;
+  background: white;
   color: var(--navy);
+}
+a.button.ghost:hover, button.ghost:hover {
+  color: var(--navy);
+  background: #f4efe6;
 }
 button[aria-pressed="true"] {
   background: var(--clay);
@@ -182,6 +202,7 @@ button[aria-pressed="true"] {
   display: inline-block;
   background: #e7eef5;
   color: var(--navy);
+  border: 1px solid var(--navy);
   border-radius: 999px;
   padding: 0.1rem 0.55rem;
   font-size: 0.85rem;
@@ -190,34 +211,82 @@ button[aria-pressed="true"] {
 .score { color: var(--good); font-weight: 700; }
 .lost { color: var(--clay); font-weight: 700; }
 
-.list { display: grid; gap: 0.75rem; }
+.list, .standing { display: grid; gap: 0.75rem; }
+.standing { list-style: none; margin: 0.6rem 0; padding: 0; }
+.standing li {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.75rem 0.85rem;
+}
+.standing .place { margin: 0; font-weight: 700; }
 
-.card h3 a { color: var(--ink); text-decoration: none; }
-.card h3 a:hover { text-decoration: underline; }
+.facts { display: grid; gap: 0.6rem; margin: 0.8rem 0; }
+.facts div {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.7rem 0.85rem;
+}
+.facts dt { color: var(--muted); font-weight: 700; font-size: 0.95rem; }
+.facts dd { margin: 0.15rem 0 0; }
+
+.gloss { margin: 0.3rem 0 0; }
+.gloss dt { font-weight: 700; margin-top: 0.65rem; }
+.gloss dd { margin: 0.12rem 0 0; }
 
 .table-scroll {
   overflow-x: auto;
   margin-top: 0.5rem;
   border: 1px solid var(--line);
   border-radius: 12px;
+  max-width: 100%;
 }
-table { border-collapse: collapse; width: 100%; min-width: 52rem; font-size: 0.92rem; }
+table { border-collapse: collapse; width: 100%; min-width: 52rem; font-size: 0.95rem; }
 th, td { padding: 0.45rem 0.5rem; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
 th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
 th { background: #f7f1e8; font-weight: 600; }
-caption { text-align: left; padding: 0.5rem; color: var(--muted); }
+caption { text-align: left; padding: 0.6rem; color: var(--ink); white-space: normal; }
 
 details { margin: 0.8rem 0; }
 summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-weight: 600; }
 
-footer { background: #e7e0d4; color: var(--ink); }
-footer .bar { display: block; padding-bottom: 2rem; }
+footer {
+  background: #e7e0d4;
+  color: var(--ink);
+  border-top: 1px solid var(--line);
+}
+footer .bar { display: block; padding-bottom: calc(2rem + env(safe-area-inset-bottom)); }
 footer a { color: var(--clay); }
 footer ul { padding-left: 1.1rem; }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 :focus-visible {
-  outline: 3px solid var(--focus);
-  outline-offset: 2px;
+  outline: 3px solid var(--navy);
+  outline-offset: 3px;
+}
+.top :focus-visible {
+  outline-color: #ffffff;
+}
+
+a, button, summary, input, select { scroll-margin-top: 8rem; }
+
+@media (max-width: 40rem) {
+  nav { width: 100%; }
+  nav a { flex: 1 1 auto; padding-inline: 0.45rem; }
+  .actions { flex-direction: column; align-items: stretch; }
+  .actions .button, .actions button { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {

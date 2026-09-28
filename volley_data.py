@@ -19,14 +19,14 @@ DATA_DIR = ROOT / "data"
 PARIS = ZoneInfo("Europe/Paris")
 
 LEVEL_HELP = {
-    "departemental": "Championnat du département.",
-    "accession-regionale": "Le niveau entre le départemental et le régional.",
-    "regional": "Championnat d’Île-de-France.",
-    "pre-national": "Le niveau juste sous le national.",
-    "jeunes": "Catégories d’âge, des moins de 11 ans aux moins de 18 ans.",
-    "loisir": "Pratique sans montée ni descente, souvent en 4 contre 4.",
-    "national": "Championnat national.",
-    "autre": "Compétition sans niveau plus précis.",
+    "departemental": "Le championnat du département, le plus proche.",
+    "accession-regionale": "Entre le championnat du département et celui de la région.",
+    "regional": "Le championnat d’Île-de-France.",
+    "pre-national": "Juste en dessous du championnat de France.",
+    "jeunes": "Équipes de jeunes, des moins de 11 ans aux moins de 18 ans.",
+    "loisir": "Pour jouer sans monter ni descendre. Souvent à 4 contre 4.",
+    "national": "Le championnat de France.",
+    "autre": "Compétition dont le niveau n’est pas plus précis.",
 }
 
 GENDER_LABEL = {
@@ -446,6 +446,7 @@ def meta(data) -> dict:
         "limits": data.get("limits") or [],
         "sources": data.get("sources") or [],
         "warnings": data.get("warnings") or [],
+        "poule_names": {poule["code"]: poule["label"] for poule in data["poules"].values()},
     }
 
 
@@ -485,7 +486,7 @@ def match_to_event(match: dict, poule: dict) -> dict:
         when = "Heure " + match["time"].replace(":", "h") + "."
     lines = [
         poule.get("label") or poule.get("code") or "Volley",
-        f"Code match {match['code']}",
+        f"Référence {match['code']}",
         when,
         f"Salle : {match['gym_label']}" if match.get("gym_label") else "Salle non indiquée.",
     ]

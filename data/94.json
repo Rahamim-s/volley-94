@@ -12,23 +12,23 @@
   },
   "sources": [
     {
-      "label": "Liste des clubs du comité",
+      "label": "Liste des clubs du Val-de-Marne",
       "url": "https://cdvb94.fr/la-pratique/liste-des-clubs/"
     },
     {
-      "label": "Page résultats du comité",
+      "label": "Résultats du Val-de-Marne",
       "url": "https://cdvb94.fr/resultats/"
     },
     {
-      "label": "Compétitions FFVB du Val-de-Marne",
+      "label": "Compétitions officielles du Val-de-Marne",
       "url": "https://www.ffvbbeach.org/ffvbapp/resu/vbspo_home.php?codent=PTIDF94"
     },
     {
-      "label": "Compétitions de la ligue Île-de-France",
+      "label": "Compétitions d’Île-de-France",
       "url": "https://www.ffvbbeach.org/ffvbapp/resu/vbspo_home.php?codent=LIIDF"
     },
     {
-      "label": "Guide municipal de Maisons-Alfort (nom du club)",
+      "label": "Guide de la ville de Maisons-Alfort (nom du club)",
       "url": "https://maisons-alfort.fr/wp-content/uploads/2018/12/2026-2027-temps-libre.pdf"
     }
   ],
@@ -39,17 +39,17 @@
     "Les matchs départementaux, de loisir, de jeunes, régionaux et pré-nationaux des clubs du 94 sont inclus. Les adversaires hors département apparaissent dans le classement, sans fiche club."
   ],
   "level_help": {
-    "departemental": "Championnat du département.",
-    "accession-regionale": "Le niveau entre le départemental et le régional.",
-    "regional": "Championnat d’Île-de-France.",
-    "pre-national": "Le niveau juste sous le national.",
-    "jeunes": "Catégories d’âge, des moins de 11 ans aux moins de 18 ans.",
-    "loisir": "Pratique sans montée ni descente, souvent en 4 contre 4.",
-    "national": "Championnat national.",
-    "autre": "Compétition sans niveau plus précis."
+    "departemental": "Le championnat du département, le plus proche.",
+    "accession-regionale": "Entre le championnat du département et celui de la région.",
+    "regional": "Le championnat d’Île-de-France.",
+    "pre-national": "Juste en dessous du championnat de France.",
+    "jeunes": "Équipes de jeunes, des moins de 11 ans aux moins de 18 ans.",
+    "loisir": "Pour jouer sans monter ni descendre. Souvent à 4 contre 4.",
+    "national": "Le championnat de France.",
+    "autre": "Compétition dont le niveau n’est pas plus précis."
   },
   "warnings": [
-    "Poules sans match publié pour l’instant : LOF, LOM, LOB, M1H, P2F, P2G, P4G."
+    "Groupes sans match publié pour l’instant : LOF, LOM, LOB, M1H, P2F, P2G, P4G."
   ],
   "counts": {
     "clubs": 21,
@@ -250,7 +250,7 @@
       "featured": true,
       "website": null,
       "usual_gym": "Gymnase Condorcet",
-      "note": "Nom public : Association sportive amicale Maisons-Alfort (ASA VB MA). Dans les compétitions, le club s’écrit ASA MAISONS ALFORT, n° 0946822. Ce n’est pas l’ASAS, une autre association, à Paris. Pas de site internet du club.",
+      "note": "À ne pas confondre avec l’ASAS, une autre association, à Paris.",
       "planning_url": "https://www.ffvbbeach.org/ffvbapp/resu/planning_club.php?cnclub=0946822"
     },
     {
