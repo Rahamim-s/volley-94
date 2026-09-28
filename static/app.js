@@ -34,6 +34,11 @@ function countPhrase(n, one, many) {
   return n + " " + (Number(n) > 1 ? many : one);
 }
 
+function setsPhrase(home, away) {
+  const word = Number(home) === 1 ? "set" : "sets";
+  return home + " " + word + " à " + away;
+}
+
 async function api(path) {
   const response = await fetch(path);
   const type = response.headers.get("content-type") || "";
@@ -76,10 +81,18 @@ function focusPinned(where, id) {
 
 function formatDate(iso) {
   if (!iso) return "";
+  const parts = dateParts(iso);
+  return parts.weekday + " " + parts.rest;
+}
+
+function dateParts(iso) {
+  if (!iso) return { weekday: "", rest: "" };
   const [year, month, day] = iso.split("-").map(Number);
-  return new Date(year, month - 1, day).toLocaleDateString("fr-FR", {
-    weekday: "long", day: "numeric", month: "long"
-  });
+  const date = new Date(year, month - 1, day);
+  return {
+    weekday: date.toLocaleDateString("fr-FR", { weekday: "long" }),
+    rest: date.toLocaleDateString("fr-FR", { day: "numeric", month: "long" })
+  };
 }
 
 function formatTime(value) {
@@ -106,9 +119,9 @@ function outcome(match, teamId) {
   }
   const mine = match.home_team_id === teamId ? match.sets_home : match.sets_away;
   const other = match.home_team_id === teamId ? match.sets_away : match.sets_home;
-  if (mine > other) return "Gagné, " + mine + " sets à " + other;
-  if (mine < other) return "Perdu, " + mine + " sets à " + other;
-  return "Égalité, " + mine + " sets à " + other;
+  if (mine > other) return "Gagné, " + setsPhrase(mine, other);
+  if (mine < other) return "Perdu, " + setsPhrase(mine, other);
+  return "Égalité, " + setsPhrase(mine, other);
 }
 
 function pinButton(id, name) {
@@ -123,24 +136,36 @@ function teamLink(row) {
 }
 
 function matchRows(matches, teamId, emptyText) {
-  if (!matches.length) {
-    return h`<p class="empty">${emptyText || "Aucun match publié pour l’instant."}</p>`;
-  }
-  return matches.map((match) => {
-    const result = teamId ? outcome(match, teamId) : "";
-    const cls = result.startsWith("Gagné") ? "score" : (result.startsWith("Perdu") ? "lost" : "");
-    const place = match.home_team_id === teamId ? "à la maison" : "chez l’adversaire";
-    const sets = match.sets_home != null
-      ? match.sets_home + " sets à " + match.sets_away + " (équipe à la maison d’abord)"
-      : "";
-    return h`<article class="card">
-      <p class="meta"><time datetime="${match.date}">${formatDate(match.date)}</time> · ${formatTime(match.time)}</p>
-      <h3><a href="/matchs/${match.id}">${match.home_name} – ${match.away_name}</a></h3>
-      <p>${match.gym_label || "Salle non indiquée"}${teamId ? raw(" · " + place) : ""}</p>
-      ${result ? raw(h`<p class="${cls}">${result}</p>`) : (sets ? raw(h`<p>${sets}</p>`) : "")}
-      ${match.score ? raw(h`<p>Manche par manche : ${match.score}</p>`) : ""}
-    </article>`;
-  }).join("");
+  const body = !matches.length
+    ? h`<p class="empty">${emptyText || "Aucun match publié pour l’instant."}</p>`
+    : matches.map((match) => {
+      const result = teamId ? outcome(match, teamId) : "";
+      const cls = result.startsWith("Gagné") ? "score" : (result.startsWith("Perdu") ? "lost" : "");
+      const place = match.home_team_id === teamId ? "à la maison" : "chez l’adversaire";
+      const sets = match.sets_home != null ? setsPhrase(match.sets_home, match.sets_away) : "";
+      const parts = dateParts(match.date);
+      const outcomeBlock = result
+        ? h`<p class="match-outcome ${cls}">${result}</p>`
+        : (sets ? h`<p class="match-outcome">${sets}</p>` : "");
+      const where = (match.gym_label || "Salle non indiquée") + (teamId ? " · " + place : "");
+      const homeNote = sets && !result ? "Équipe à la maison d’abord." : "";
+      const extra = homeNote || match.score
+        ? h`<div class="match-extra">${homeNote ? raw(h`<p class="match-detail">${homeNote}</p>`) : ""}${match.score ? raw(h`<p class="match-detail">Manche par manche : ${match.score}</p>`) : ""}</div>`
+        : "";
+      return h`<article class="card match${extra ? " has-extra" : ""}">
+        <div class="match-when">
+          <time datetime="${match.date}"><span class="when-day">${parts.weekday}</span><span class="when-date">${parts.rest}</span></time>
+          <span class="when-time">${formatTime(match.time)}</span>
+        </div>
+        <div class="match-main">
+          <h3><a href="/matchs/${match.id}">${match.home_name} – ${match.away_name}</a></h3>
+          <p class="match-where">${where}</p>
+        </div>
+        ${raw(outcomeBlock)}
+        ${raw(extra)}
+      </article>`;
+    }).join("");
+  return h`<div class="matches">${raw(body)}</div>`;
 }
 
 function teamCards(list) {
@@ -150,14 +175,14 @@ function teamCards(list) {
   return list.map((team) => {
     const next = team.next_match;
     const nextLine = next
-      ? h`<p>Prochain match : ${formatDate(next.date)}, ${formatTime(next.time)}, contre ${next.opponent}${next.gym_label ? raw(h`, ${next.gym_label}`) : ""}.</p>`
-      : h`<p class="hint">Pas de match à venir publié.</p>`;
+      ? h`<p class="next">Prochain match : ${formatDate(next.date)}, ${formatTime(next.time)}, contre ${next.opponent}${next.gym_label ? raw(h`, ${next.gym_label}`) : ""}.</p>`
+      : h`<p class="hint next">Pas de match à venir publié.</p>`;
     const points = team.points != null ? " · " + countPhrase(team.points, "point", "points") : "";
-    return h`<article class="card">
+    return h`<article class="card team">
       <p class="meta">${team.featured ? raw(`<span class="badge">Maisons-Alfort</span> `) : ""}${team.label}${team.group ? raw(" · " + esc(groupText(team.group))) : ""}</p>
       <h3><a href="/equipes/${team.id}">${team.name}</a></h3>
-      <p>${team.club_name}${team.city ? raw(" · " + esc(team.city)) : ""}</p>
-      <p>${rankText(team.rank, team.poule_size)}${raw(points)}</p>
+      <p class="team-club">${team.club_name}${team.city ? raw(" · " + esc(team.city)) : ""}</p>
+      <p class="team-rank">${rankText(team.rank, team.poule_size)}${raw(points)}</p>
       ${raw(nextLine)}
       <div class="actions">
         <a class="button" href="/equipes/${team.id}">Voir l’équipe</a>
@@ -214,12 +239,14 @@ function homeShell() {
   ).join("");
   const featured = clubs.find((club) => club.featured);
   const banner = featured ? h`<section class="featured">
-      <p class="eyebrow">Club mis en avant</p>
-      <h2>${featured.name}</h2>
-      <p>${featured.short_name}${featured.city ? raw(" · " + esc(featured.city)) : ""}</p>
-      <p>Numéro de club ${featured.id}. Dans les classements, il s’écrit « ${featured.ffvb_name} ».</p>
-      ${featured.usual_gym ? raw(h`<p>Salle la plus utilisée à domicile : ${featured.usual_gym}.</p>`) : ""}
-      <p>${featured.note || ""}</p>
+      <div>
+        <p class="eyebrow">Club mis en avant</p>
+        <h2>${featured.name}</h2>
+        <p>${featured.short_name}${featured.city ? raw(" · " + esc(featured.city)) : ""}</p>
+        <p>Numéro de club ${featured.id}. Dans les classements, il s’écrit « ${featured.ffvb_name} ».</p>
+        ${featured.usual_gym ? raw(h`<p>Salle la plus utilisée à domicile : ${featured.usual_gym}.</p>`) : ""}
+        <p>${featured.note || ""}</p>
+      </div>
       <div class="actions"><a class="button" href="/clubs/${featured.id}">Voir le club</a></div>
     </section>` : "";
   return h`<h1>Les équipes du Val-de-Marne</h1>
@@ -247,22 +274,22 @@ function homeShell() {
     <section id="suivies" class="panel">
       <h2>Mes équipes</h2>
       <p class="hint">Elles restent enregistrées dans ce navigateur, sur cet appareil. Pour un rappel avant le match, ajoute le calendrier.</p>
-      <div id="suivies-liste"></div>
+      <div id="suivies-liste" class="list"></div>
     </section>
     <form id="filtres" class="filters" role="search" aria-label="Filtrer les équipes">
-      <div class="wide">
+      <div class="field search-field wide">
         <label for="q">Recherche</label>
         <input id="q" name="q" type="search" autocomplete="off" placeholder="Nom du club, de la ville ou de l’équipe">
       </div>
-      <div>
+      <div class="field">
         <label for="club">Club</label>
         <select id="club" name="club"><option value="">Tous les clubs</option>${raw(clubOptions)}</select>
       </div>
-      <div>
+      <div class="field">
         <label for="niveau">Niveau</label>
         <select id="niveau" name="niveau" aria-describedby="aide-niveau"><option value="">Tous les niveaux</option>${raw(levelOptions)}</select>
       </div>
-      <div>
+      <div class="field">
         <label for="sexe">Féminin, masculin ou mixte</label>
         <select id="sexe" name="sexe"><option value="">Tous</option>${raw(genderOptions)}</select>
       </div>
@@ -272,8 +299,10 @@ function homeShell() {
       </div>
     </form>
     <section aria-labelledby="titre-resultats">
-      <h2 id="titre-resultats">Équipes trouvées</h2>
-      <p id="compte" aria-live="polite"></p>
+      <div class="section-head">
+        <h2 id="titre-resultats">Équipes trouvées</h2>
+        <p id="compte" aria-live="polite"></p>
+      </div>
       <div id="resultats" class="list"></div>
     </section>`;
 }
@@ -375,7 +404,7 @@ function renderClubs() {
   main.innerHTML = h`<h1>Clubs du Val-de-Marne</h1>
     <p class="lead">${clubs.length} clubs. Choisis-en un pour voir ses équipes.</p>
     <form id="filtre-clubs" class="filters" role="search" aria-label="Rechercher un club">
-      <div class="wide">
+      <div class="field search-field wide">
         <label for="q-club">Recherche un club</label>
         <input id="q-club" type="search" autocomplete="off" placeholder="Nom ou ville">
       </div>
@@ -392,9 +421,10 @@ function renderClubs() {
     });
     const compte = document.getElementById("club-compte");
     compte.textContent = found.length === 0 ? "Aucun club" : (found.length === 1 ? "1 club" : found.length + " clubs");
-    document.getElementById("club-list").innerHTML = found.map((club) => h`<article class="card">
+    document.getElementById("club-list").innerHTML = found.map((club) => h`<article class="card${club.featured ? " is-featured" : ""}">
+      <p class="meta">numéro ${club.id}</p>
       <h3><a href="/clubs/${club.id}">${club.name}</a></h3>
-      <p>${club.city || "Ville non indiquée"} · numéro ${club.id}</p>
+      <p class="team-club">${club.city || "Ville non indiquée"}</p>
       <p class="hint">${countPhrase(club.team_count, "équipe engagée", "équipes engagées")}.</p>
     </article>`).join("") || h`<p class="empty">Aucun club ne correspond à cette recherche.</p>`;
   };
@@ -475,8 +505,10 @@ function standingList(rankings) {
     }
     return h`<li>
       <p class="place">${rankText(row.rank, rankings.length)}</p>
-      <p>${raw(teamLink(row))}</p>
-      ${stats ? raw(h`<p class="hint">${stats}</p>`) : ""}
+      <div>
+        <p class="standing-name">${raw(teamLink(row))}</p>
+        ${stats ? raw(h`<p class="hint">${stats}</p>`) : ""}
+      </div>
     </li>`;
   }).join("");
   return h`<ol class="standing">${raw(items)}</ol>`;
@@ -539,13 +571,13 @@ async function renderTeam(id) {
 async function renderMatch(id) {
   const data = await api("/api/matchs/" + id);
   const match = data.match;
-  const sets = match.sets_home != null ? match.sets_home + " sets à " + match.sets_away : "Match à venir";
+  const sets = match.sets_home != null ? setsPhrase(match.sets_home, match.sets_away) : "Match à venir";
   const refs = [match.referee_1, match.referee_2].filter(Boolean);
   main.innerHTML = h`<nav class="crumbs" aria-label="Fil d’Ariane"><a href="/">Équipes</a></nav>
     <h1>${match.home_name} – ${match.away_name}</h1>
     <p class="lead">${match.poule_label || ""}</p>
-    <p><time datetime="${match.date}">${formatDate(match.date)}</time> · ${formatTime(match.time)}</p>
-    <p class="${match.status === "joue" ? "score" : ""}">${sets}</p>
+    <p class="match-kick"><time datetime="${match.date}">${formatDate(match.date)}</time> · ${formatTime(match.time)}</p>
+    <p class="scoreline ${match.status === "joue" ? "score" : ""}">${sets}</p>
     <p class="hint">La première équipe joue à la maison.</p>
     ${match.score ? raw(h`<p>Manche par manche : ${match.score}</p><p class="hint">Chaque paire de nombres est le score d’une manche (un set).</p>`) : ""}
     ${match.total ? raw(h`<p>Points marqués au total : ${match.total}.</p>`) : ""}
