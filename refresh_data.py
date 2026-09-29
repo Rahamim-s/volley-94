@@ -23,7 +23,7 @@ from datetime import datetime
 from html import unescape
 from pathlib import Path
 
-from volley_data import DATA_DIR, LEVEL_HELP, PARIS, compact
+from volley_data import DATA_DIR, LEVEL_HELP, PARIS, compact, write_public_calendar
 
 USER_AGENT = "volley-app/0.1 (consultation personnelle des pages publiques)"
 ALLOWED_HOSTS = {"cdvb94.fr", "www.ffvbbeach.org"}
@@ -870,6 +870,11 @@ def main() -> int:
     print(f"ASA Maisons-Alfort : {len(asa)} équipes", flush=True)
     for warning in warnings:
         print("Réserve :", warning, flush=True)
+    calendar = write_public_calendar()
+    if calendar:
+        print(f"Calendrier SM2 : {calendar}", flush=True)
+    else:
+        print("Calendrier SM2 non écrit : équipe introuvable.", file=sys.stderr)
     if not asa:
         print("Aucune équipe ASA dans les poules retenues.", file=sys.stderr)
         return 1

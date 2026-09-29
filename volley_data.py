@@ -17,6 +17,11 @@ from zoneinfo import ZoneInfo
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
 PARIS = ZoneInfo("Europe/Paris")
+# Seniors masculins 2 d’ASA Maisons-Alfort. Le trait d’union distingue
+# ce libellé FFVB de l’équipe féminine « ASA MAISONS ALFORT 2 ».
+SM2_CLUB_ID = "0946822"
+SM2_FFVB_NAME = "ASA MAISONS-ALFORT 2"
+PUBLIC_CALENDAR = ROOT / "static" / "asa-maisons-alfort-2.ics"
 
 LEVEL_HELP = {
     "departemental": "Le championnat du département, le plus proche.",
@@ -538,6 +543,77 @@ def build_ics(events: list[dict], calendar_name: str) -> str:
         lines.append("END:VEVENT")
     lines.append("END:VCALENDAR")
     return "\r\n".join(_fold_line(line) for line in lines) + "\r\n"
+
+
+def sm2_team(data) -> dict | None:
+    for team in data["teams"].values():
+        if team.get("club_id") == SM2_CLUB_ID and team.get("ffvb_name") == SM2_FFVB_NAME:
+            return team
+    return None
+
+
+def build_public_ics(events: list[dict], calendar_name: str) -> str:
+    """Fichier publiable : date, équipes, salle. Pas d’UID ni de contact."""
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//Volley 94//FR",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        "X-WR-CALNAME:" + ics_escape(calendar_name),
+        "X-WR-TIMEZONE:Europe/Paris",
+    ]
+    for event in events:
+        lines.append("BEGIN:VEVENT")
+        if event.get("time"):
+            start = datetime.strptime(
+                f"{event['date']} {event['time']}", "%Y-%m-%d %H:%M"
+            ).replace(tzinfo=PARIS)
+            end = start + timedelta(hours=2)
+            lines.append(f"DTSTART:{_fmt_utc(start)}")
+            lines.append(f"DTEND:{_fmt_utc(end)}")
+        else:
+            day = date.fromisoformat(event["date"])
+            lines.append(f"DTSTART;VALUE=DATE:{day.strftime('%Y%m%d')}")
+            lines.append(f"DTEND;VALUE=DATE:{(day + timedelta(days=1)).strftime('%Y%m%d')}")
+        lines.append("SUMMARY:" + ics_escape(event["summary"]))
+        if event.get("location"):
+            lines.append("LOCATION:" + ics_escape(event["location"]))
+        lines.append("END:VEVENT")
+    lines.append("END:VCALENDAR")
+    return "\r\n".join(_fold_line(line) for line in lines) + "\r\n"
+
+
+def public_team_calendar(data) -> tuple[str, str] | None:
+    """Tous les matchs de l’équipe SM2, et seulement ceux-là."""
+    team = sm2_team(data)
+    if not team:
+        return None
+    matches = [
+        match
+        for match in data["matches"].values()
+        if team["id"] in (match.get("home_team_id"), match.get("away_team_id"))
+    ]
+    matches.sort(key=lambda match: (match["date"], match.get("time") or "99", match["code"]))
+    events = [
+        {
+            "date": match["date"],
+            "time": match.get("time"),
+            "summary": f"{match['home_name']} – {match['away_name']}",
+            "location": match.get("gym_label") or "",
+        }
+        for match in matches
+    ]
+    return build_public_ics(events, team["name"]), PUBLIC_CALENDAR.name
+
+
+def write_public_calendar(path: Path | None = None) -> Path | None:
+    built = public_team_calendar(load_dataset())
+    if not built:
+        return None
+    dest = path or PUBLIC_CALENDAR
+    dest.write_text(built[0], encoding="utf-8")
+    return dest
 
 
 def team_ics(data, team_id: str) -> tuple[str, str] | None:

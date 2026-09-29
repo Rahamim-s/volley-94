@@ -1,5 +1,5 @@
-/* Pages : /, /clubs, /clubs/:id, /equipes/:id, /matchs/:id
-   Les filtres et les fiches viennent de l’API Python. */
+/* Pages en ancre : #/, #/clubs, #/equipes/:id, #/matchs/:id.
+   Les fiches sont lues dans data/94.json, sans serveur. */
 
 const main = document.getElementById("contenu");
 const PIN_KEY = "volley94.equipes";
@@ -39,15 +39,385 @@ function setsPhrase(home, away) {
   return home + " " + word + " à " + away;
 }
 
-async function api(path) {
-  const response = await fetch(path);
-  const type = response.headers.get("content-type") || "";
-  const body = type.includes("json") ? await response.json() : await response.text();
-  if (!response.ok) {
-    const message = body && body.error ? body.error : "Réponse " + response.status;
-    throw new Error(message);
+const STATIC_BASE = new URL("./", document.currentScript.src);
+const DATA_URL = new URL("../data/94.json", STATIC_BASE);
+const CALENDAR_FILE = "asa-maisons-alfort-2.ics";
+const SM2_CLUB = "0946822";
+const SM2_FFVB = "ASA MAISONS-ALFORT 2";
+const LEVEL_LABEL = {
+  departemental: "Départemental",
+  "accession-regionale": "Accession régionale",
+  regional: "Régional",
+  "pre-national": "Pré-national",
+  jeunes: "Jeunes",
+  loisir: "Loisir",
+  national: "National",
+  autre: "Autre"
+};
+const LEVEL_ORDER = Object.keys(LEVEL_LABEL);
+
+let db = null;
+let calendarTeam = null;
+
+function fold(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function queryMatches(query, blob) {
+  const folded = fold(query);
+  const hay = fold(blob);
+  if (!folded) return true;
+  if (hay.includes(folded)) return true;
+  const words = hay.split(" ");
+  return folded.split(" ").every((tok) => hay.includes(tok) || words.some((word) => word.startsWith(tok)));
+}
+
+function todayParis() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Paris",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date());
+}
+
+function indexById(list) {
+  const out = {};
+  (list || []).forEach((item) => { out[item.id] = item; });
+  return out;
+}
+
+function cmpText(a, b) {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+}
+
+function cmpMatch(a, b) {
+  return cmpText(a.date, b.date) || cmpText(a.time || "99", b.time || "99") || cmpText(a.code, b.code);
+}
+
+function publicMatch(match, poule) {
+  let score = (match.score || "").trim();
+  if (score) score = score.replace(/\s*,\s*/g, ", ");
+  let total = match.total || null;
+  if (total && String(total).includes("-")) {
+    const parts = String(total).split("-");
+    total = parts[0].trim() + " à " + parts.slice(1).join("-").trim();
   }
-  return body;
+  return {
+    id: match.id,
+    code: match.code,
+    date: match.date,
+    time: match.time || null,
+    home_name: match.home_name,
+    away_name: match.away_name,
+    home_team_id: match.home_team_id || null,
+    away_team_id: match.away_team_id || null,
+    home_club_id: match.home_club_id || null,
+    away_club_id: match.away_club_id || null,
+    gym_label: match.gym_label || null,
+    sets_home: match.sets_home,
+    sets_away: match.sets_away,
+    score: score || null,
+    total,
+    status: match.status,
+    referee_1: match.referee_1 || null,
+    referee_2: match.referee_2 || null,
+    poule_id: match.poule_id,
+    poule_code: poule ? poule.code : null,
+    poule_label: poule ? poule.label : null,
+    poule_url: poule ? poule.url : null
+  };
+}
+
+function nextMatch(teamId) {
+  const today = todayParis();
+  const mine = Object.values(db.matches).filter((match) =>
+    match.home_team_id === teamId || match.away_team_id === teamId
+  );
+  let found = mine.filter((match) => match.date >= today && match.status !== "joue").sort(cmpMatch);
+  if (!found.length) found = mine.filter((match) => match.date >= today).sort(cmpMatch).slice(0, 1);
+  if (!found.length) return null;
+  const match = found[0];
+  const home = match.home_team_id === teamId;
+  return {
+    id: match.id,
+    date: match.date,
+    time: match.time || null,
+    opponent: home ? match.away_name : match.home_name,
+    gym_label: match.gym_label || null,
+    home
+  };
+}
+
+function teamCard(team) {
+  const club = db.clubs[team.club_id];
+  const poule = db.poules[team.poule_id];
+  const standing = team.standing || {};
+  return {
+    id: team.id,
+    name: team.name,
+    ffvb_name: team.ffvb_name,
+    club_id: club.id,
+    club_name: club.name,
+    city: club.city || null,
+    featured: !!club.featured,
+    poule_id: poule.id,
+    poule_code: poule.code,
+    label: poule.label,
+    gender: poule.gender,
+    level: poule.level,
+    category: poule.category,
+    group: poule.group || null,
+    usual_gym: team.usual_gym || null,
+    rank: standing.rank ?? null,
+    poule_size: (poule.rankings || []).length,
+    points: standing.points ?? null,
+    played: standing.played ?? null,
+    won: standing.won ?? null,
+    lost: standing.lost ?? null,
+    next_match: nextMatch(team.id)
+  };
+}
+
+function searchBlob(team) {
+  const club = db.clubs[team.club_id];
+  const poule = db.poules[team.poule_id];
+  return [team.name, team.ffvb_name, club.name, club.short_name, club.city, club.ffvb_name, club.note, poule.label, poule.code, poule.official_name]
+    .map((part) => part || "").join(" ");
+}
+
+function publicClub(club, teamCount) {
+  const payload = {
+    id: club.id,
+    department_code: club.department_code,
+    name: club.name,
+    short_name: club.short_name || null,
+    ffvb_name: club.ffvb_name,
+    city: club.city || null,
+    featured: !!club.featured,
+    website: club.website || null,
+    usual_gym: club.usual_gym || null,
+    note: club.note || null,
+    planning_url: club.planning_url || null
+  };
+  if (teamCount != null) payload.team_count = teamCount;
+  return payload;
+}
+
+function listTeams(params) {
+  if (params.ids) {
+    const teams = [];
+    const missing = [];
+    params.ids.split(",").filter(Boolean).forEach((id) => {
+      const team = db.teams[id];
+      if (team) teams.push(teamCard(team));
+      else missing.push(id);
+    });
+    return { teams, missing, total: teams.length };
+  }
+  const found = Object.values(db.teams).filter((team) => {
+    const poule = db.poules[team.poule_id];
+    if (params.club && team.club_id !== params.club) return false;
+    if (params.niveau && poule.level !== params.niveau) return false;
+    if (params.sexe && poule.gender !== params.sexe) return false;
+    if (params.q && !queryMatches(params.q, searchBlob(team))) return false;
+    return true;
+  }).map(teamCard);
+  found.sort((a, b) =>
+    (a.featured ? 0 : 1) - (b.featured ? 0 : 1)
+    || cmpText(a.next_match ? a.next_match.date : "9999-99-99", b.next_match ? b.next_match.date : "9999-99-99")
+    || cmpText(fold(a.name), fold(b.name))
+    || cmpText(a.label, b.label)
+  );
+  return { teams: found, missing: [], total: found.length };
+}
+
+function listClubs() {
+  const clubs = Object.values(db.clubs).map((club) => {
+    const count = Object.values(db.teams).filter((team) => team.club_id === club.id).length;
+    return publicClub(club, count);
+  });
+  clubs.sort((a, b) => (a.featured ? 0 : 1) - (b.featured ? 0 : 1) || cmpText(fold(a.name), fold(b.name)));
+  return { clubs };
+}
+
+function clubDetail(id) {
+  const club = db.clubs[id];
+  if (!club) return null;
+  const teams = Object.values(db.teams).filter((team) => team.club_id === id).map(teamCard);
+  teams.sort((a, b) => cmpText(a.label, b.label) || cmpText(a.name, b.name));
+  const today = todayParis();
+  const own = Object.values(db.matches).filter((match) => match.home_club_id === id || match.away_club_id === id);
+  own.sort(cmpMatch);
+  const upcoming = [];
+  const recent = [];
+  own.forEach((match) => {
+    const view = publicMatch(match, db.poules[match.poule_id]);
+    if (match.date >= today && match.status !== "joue") upcoming.push(view);
+    else if (match.date < today || match.status === "joue") recent.push(view);
+  });
+  return {
+    club: publicClub(club, teams.length),
+    teams,
+    upcoming: upcoming.slice(0, 12),
+    recent: recent.slice(-5).reverse()
+  };
+}
+
+function publicRanking(row) {
+  const kept = {
+    rank: row.rank ?? null,
+    name: row.name,
+    ffvb_name: row.ffvb_name,
+    ffvb_code: row.ffvb_code,
+    team_id: row.team_id || null,
+    in_department: !!row.in_department
+  };
+  ["points", "played", "won", "lost", "forfeit", "w3_0", "w3_1", "w3_2", "l2_3", "l1_3", "l0_3", "sets_for", "sets_against", "sets_ratio", "points_for", "points_against", "points_ratio"]
+    .forEach((key) => { kept[key] = Object.prototype.hasOwnProperty.call(row, key) ? row[key] : 0; });
+  return kept;
+}
+
+function teamDetail(id) {
+  const team = db.teams[id];
+  if (!team) return null;
+  const poule = db.poules[team.poule_id];
+  const matches = Object.values(db.matches).filter((match) => match.home_team_id === id || match.away_team_id === id);
+  matches.sort(cmpMatch);
+  const today = todayParis();
+  const upcoming = [];
+  const played = [];
+  matches.forEach((match) => {
+    const view = publicMatch(match, poule);
+    if (match.date >= today && match.status !== "joue") upcoming.push(view);
+    else played.push(view);
+  });
+  return {
+    team: teamCard(team),
+    club: publicClub(db.clubs[team.club_id]),
+    poule: {
+      id: poule.id,
+      code: poule.code,
+      label: poule.label,
+      official_name: poule.official_name || null,
+      gender: poule.gender,
+      level: poule.level,
+      category: poule.category,
+      group: poule.group || null,
+      url: poule.url,
+      scope: poule.scope || null,
+      shared: !!poule.shared
+    },
+    rankings: (poule.rankings || []).map(publicRanking),
+    upcoming,
+    played: played.slice().reverse(),
+    upcoming_count: upcoming.length
+  };
+}
+
+function matchDetail(id) {
+  const match = db.matches[id];
+  if (!match) return null;
+  return { match: publicMatch(match, db.poules[match.poule_id]) };
+}
+
+function metaView() {
+  const seen = new Set();
+  const levels = [];
+  Object.values(db.poules).forEach((poule) => {
+    if (seen.has(poule.level)) return;
+    seen.add(poule.level);
+    levels.push({
+      id: poule.level,
+      label: LEVEL_LABEL[poule.level] || poule.level,
+      help: (db.level_help || {})[poule.level] || ""
+    });
+  });
+  levels.sort((a, b) => {
+    const ia = LEVEL_ORDER.indexOf(a.id);
+    const ib = LEVEL_ORDER.indexOf(b.id);
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+  });
+  const pouleNames = {};
+  Object.values(db.poules).forEach((poule) => { pouleNames[poule.code] = poule.label; });
+  return {
+    season: db.season,
+    generated_at: db.generated_at,
+    featured_club_id: db.featured_club_id,
+    departments: db.departments,
+    counts: {
+      clubs: Object.keys(db.clubs).length,
+      teams: Object.keys(db.teams).length,
+      matches: Object.keys(db.matches).length,
+      poules: Object.keys(db.poules).length
+    },
+    levels,
+    genders: [
+      { id: "feminin", label: "Féminin (femmes, filles)" },
+      { id: "masculin", label: "Masculin (hommes, garçons)" },
+      { id: "mixte", label: "Mixte" }
+    ],
+    level_help: db.level_help,
+    limits: db.limits,
+    sources: db.sources,
+    warnings: db.warnings,
+    poule_names: pouleNames
+  };
+}
+
+function answer(path) {
+  const cut = path.indexOf("?");
+  const route = cut === -1 ? path : path.slice(0, cut);
+  const query = {};
+  new URLSearchParams(cut === -1 ? "" : path.slice(cut + 1)).forEach((value, key) => { query[key] = value; });
+  if (route === "/api/meta") return metaView();
+  if (route === "/api/clubs") return listClubs();
+  if (route === "/api/equipes") return listTeams(query);
+  let found = route.match(/^\/api\/clubs\/(\d+)$/);
+  if (found) {
+    const detail = clubDetail(found[1]);
+    if (!detail) throw new Error("Club introuvable.");
+    return detail;
+  }
+  found = route.match(/^\/api\/equipes\/([A-Za-z0-9_-]+)$/);
+  if (found) {
+    const detail = teamDetail(found[1]);
+    if (!detail) throw new Error("Équipe introuvable.");
+    return detail;
+  }
+  found = route.match(/^\/api\/matchs\/([A-Za-z0-9_-]+)$/);
+  if (found) {
+    const detail = matchDetail(found[1]);
+    if (!detail) throw new Error("Match introuvable.");
+    return detail;
+  }
+  throw new Error("Adresse inconnue.");
+}
+
+function api(path) {
+  return Promise.resolve(answer(path));
+}
+
+function hashParts() {
+  const raw = location.hash.replace(/^#/, "");
+  const cut = raw.indexOf("?");
+  const path = (cut === -1 ? raw : raw.slice(0, cut)) || "/";
+  return {
+    path: path.startsWith("/") ? path : "/" + path,
+    query: new URLSearchParams(cut === -1 ? "" : raw.slice(cut + 1))
+  };
+}
+
+function calendarButton(label) {
+  return h`<a class="button" href="${CALENDAR_FILE}">${label}</a>`;
 }
 
 function pins() {
@@ -131,7 +501,7 @@ function pinButton(id, name) {
 }
 
 function teamLink(row) {
-  if (row.team_id) return h`<a href="/equipes/${row.team_id}">${row.name}</a>`;
+  if (row.team_id) return h`<a href="#/equipes/${row.team_id}">${row.name}</a>`;
   return esc(row.name) + (row.in_department ? "" : " (autre département)");
 }
 
@@ -158,7 +528,7 @@ function matchRows(matches, teamId, emptyText) {
           <span class="when-time">${formatTime(match.time)}</span>
         </div>
         <div class="match-main">
-          <h3><a href="/matchs/${match.id}">${match.home_name} – ${match.away_name}</a></h3>
+          <h3><a href="#/matchs/${match.id}">${match.home_name} – ${match.away_name}</a></h3>
           <p class="match-where">${where}</p>
         </div>
         ${raw(outcomeBlock)}
@@ -180,12 +550,12 @@ function teamCards(list) {
     const points = team.points != null ? " · " + countPhrase(team.points, "point", "points") : "";
     return h`<article class="card team">
       <p class="meta">${team.featured ? raw(`<span class="badge">Maisons-Alfort</span> `) : ""}${team.label}${team.group ? raw(" · " + esc(groupText(team.group))) : ""}</p>
-      <h3><a href="/equipes/${team.id}">${team.name}</a></h3>
+      <h3><a href="#/equipes/${team.id}">${team.name}</a></h3>
       <p class="team-club">${team.club_name}${team.city ? raw(" · " + esc(team.city)) : ""}</p>
       <p class="team-rank">${rankText(team.rank, team.poule_size)}${raw(points)}</p>
       ${raw(nextLine)}
       <div class="actions">
-        <a class="button" href="/equipes/${team.id}">Voir l’équipe</a>
+        <a class="button" href="#/equipes/${team.id}">Voir l’équipe</a>
         ${raw(pinButton(team.id, team.name))}
       </div>
     </article>`;
@@ -193,9 +563,15 @@ function teamCards(list) {
 }
 
 function markNav() {
+  const path = hashParts().path;
   document.querySelectorAll("nav a").forEach((link) => {
-    const current = link.pathname === location.pathname && !link.hash;
-    if (current) link.setAttribute("aria-current", "page");
+    const href = link.getAttribute("href") || "";
+    if (!href.startsWith("#/")) {
+      link.removeAttribute("aria-current");
+      return;
+    }
+    const target = href.slice(1).split("?")[0];
+    if (target === path) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   });
 }
@@ -238,6 +614,15 @@ function homeShell() {
     h`<option value="${gender.id}">${gender.label}</option>`
   ).join("");
   const featured = clubs.find((club) => club.featured);
+  const sm2 = calendarTeam ? teamCard(calendarTeam) : null;
+  const calendar = sm2 ? h`<section class="featured">
+      <div>
+        <p class="eyebrow">Calendrier</p>
+        <h2>${sm2.name}</h2>
+        <p>Seniors masculins 2 · ${sm2.label}. Un seul fichier, avec uniquement les matchs de cette équipe.</p>
+      </div>
+      <div class="actions">${raw(calendarButton("Ajouter les matchs au calendrier"))}</div>
+    </section>` : "";
   const banner = featured ? h`<section class="featured">
       <div>
         <p class="eyebrow">Club mis en avant</p>
@@ -247,7 +632,7 @@ function homeShell() {
         ${featured.usual_gym ? raw(h`<p>Salle la plus utilisée à domicile : ${featured.usual_gym}.</p>`) : ""}
         <p>${featured.note || ""}</p>
       </div>
-      <div class="actions"><a class="button" href="/clubs/${featured.id}">Voir le club</a></div>
+      <div class="actions"><a class="button" href="#/clubs/${featured.id}">Voir le club</a></div>
     </section>` : "";
   return h`<h1>Les équipes du Val-de-Marne</h1>
     <p class="lead">Choisis un club ou un niveau pour voir les équipes et les prochains matchs. Gratuit, sans compte.</p>
@@ -270,6 +655,7 @@ function homeShell() {
         <dd>L’identifiant officiel. Celui de Maisons-Alfort est 0946822.</dd>
       </dl>
     </details>
+    ${raw(calendar)}
     ${raw(banner)}
     <section id="suivies" class="panel">
       <h2>Mes équipes</h2>
@@ -308,7 +694,7 @@ function homeShell() {
 }
 
 function readFilters() {
-  const params = new URLSearchParams(location.search);
+  const params = hashParts().query;
   return {
     q: document.getElementById("q") ? document.getElementById("q").value : (params.get("q") || ""),
     club: document.getElementById("club") ? document.getElementById("club").value : (params.get("club") || ""),
@@ -318,7 +704,7 @@ function readFilters() {
 }
 
 function applyFiltersToForm() {
-  const params = new URLSearchParams(location.search);
+  const params = hashParts().query;
   ["q", "club", "niveau", "sexe"].forEach((key) => {
     const field = document.getElementById(key);
     if (field && params.has(key)) field.value = params.get(key);
@@ -371,7 +757,11 @@ async function refreshList() {
   const filters = readFilters();
   const params = new URLSearchParams();
   Object.entries(filters).forEach(([key, value]) => { if (value) params.set(key, value); });
-  history.replaceState(null, "", "/" + (params.toString() ? "?" + params.toString() : "") + location.hash);
+  if (hashParts().path !== "/suivies") {
+    const query = params.toString();
+    const next = "#/" + (query ? "?" + query : "");
+    if (location.hash !== next) history.replaceState(null, "", next);
+  }
   helpForLevel();
   const data = await api("/api/equipes?" + params.toString());
   if (token !== listToken || !document.getElementById("compte")) return;
@@ -397,7 +787,6 @@ async function renderHome() {
   }
   await refreshPins();
   await refreshList();
-  if (location.hash === "#suivies") document.getElementById("suivies").scrollIntoView();
 }
 
 function renderClubs() {
@@ -423,7 +812,7 @@ function renderClubs() {
     compte.textContent = found.length === 0 ? "Aucun club" : (found.length === 1 ? "1 club" : found.length + " clubs");
     document.getElementById("club-list").innerHTML = found.map((club) => h`<article class="card${club.featured ? " is-featured" : ""}">
       <p class="meta">numéro ${club.id}</p>
-      <h3><a href="/clubs/${club.id}">${club.name}</a></h3>
+      <h3><a href="#/clubs/${club.id}">${club.name}</a></h3>
       <p class="team-club">${club.city || "Ville non indiquée"}</p>
       <p class="hint">${countPhrase(club.team_count, "équipe engagée", "équipes engagées")}.</p>
     </article>`).join("") || h`<p class="empty">Aucun club ne correspond à cette recherche.</p>`;
@@ -446,7 +835,7 @@ async function renderClub(id) {
     ? h`<p>Site du club : ${raw(ext(club.website, club.website))}</p>`
     : h`<p>Pas de site internet indiqué pour ce club.</p>`;
   const city = club.city || "Ville non indiquée";
-  main.innerHTML = h`<nav class="crumbs" aria-label="Fil d’Ariane"><a href="/clubs">Clubs</a></nav>
+  main.innerHTML = h`<nav class="crumbs" aria-label="Fil d’Ariane"><a href="#/clubs">Clubs</a></nav>
     <h1>${club.name}</h1>
     <p class="lead">${club.short_name && club.short_name !== club.name ? raw(esc(club.short_name) + " · ") : ""}${city}</p>
     <dl class="facts">
@@ -524,9 +913,8 @@ async function renderTeam(id) {
   const team = data.team;
   const hasStanding = data.rankings.some((row) => row.points != null);
   const mixed = data.rankings.some((row) => !row.in_department);
-  const calendar = data.upcoming_count
-    ? h`<a class="button" href="/calendrier/equipe/${team.id}.ics">Ajouter les prochains matchs au calendrier</a>`
-    : h`<p class="hint">Pas de match à venir à mettre dans le calendrier.</p>`;
+  const isSm2 = calendarTeam && team.id === calendarTeam.id;
+  const calendar = isSm2 ? calendarButton("Ajouter les matchs au calendrier") : "";
   const board = hasStanding
     ? h`<h2>Classement</h2>${raw(standingList(data.rankings))}
       <details><summary>Tous les chiffres</summary>
@@ -545,7 +933,7 @@ async function renderTeam(id) {
   if (team.won != null && team.played != null) {
     rankLine += ". " + countPhrase(team.won, "victoire", "victoires") + " en " + countPhrase(team.played, "match", "matchs");
   }
-  main.innerHTML = h`<nav class="crumbs" aria-label="Fil d’Ariane"><a href="/">Équipes</a> <span aria-hidden="true">/</span> <a href="/clubs/${team.club_id}">${team.club_name}</a></nav>
+  main.innerHTML = h`<nav class="crumbs" aria-label="Fil d’Ariane"><a href="#/">Équipes</a> <span aria-hidden="true">/</span> <a href="#/clubs/${team.club_id}">${team.club_name}</a></nav>
     <h1>${team.name}</h1>
     <p class="lead">${team.label}${raw(group)}</p>
     <dl class="facts">
@@ -556,7 +944,7 @@ async function renderTeam(id) {
     </dl>
     <p class="hint">Une poule est le groupe d’équipes qui se rencontrent. Le code sert à retrouver ce groupe sur le site des résultats.</p>
     <div class="actions">${raw(pinButton(team.id, team.name))}${raw(calendar)}</div>
-    <p class="hint">Le fichier s’ouvre dans Calendrier (iPhone, Mac), Outlook, ou s’importe dans Google Agenda. Ce n’est pas une alarme automatique.</p>
+    ${isSm2 ? raw(h`<p class="hint">Le fichier s’ouvre dans Calendrier (iPhone, Mac), Outlook, ou s’importe dans Google Agenda. Il ne contient que les matchs de ${team.name}. Ce n’est pas une alarme automatique.</p>`) : ""}
     ${mixedText ? raw(h`<p class="hint">${mixedText}</p>`) : ""}
     ${raw(board)}
     <h2>Prochains matchs</h2>
@@ -573,7 +961,7 @@ async function renderMatch(id) {
   const match = data.match;
   const sets = match.sets_home != null ? setsPhrase(match.sets_home, match.sets_away) : "Match à venir";
   const refs = [match.referee_1, match.referee_2].filter(Boolean);
-  main.innerHTML = h`<nav class="crumbs" aria-label="Fil d’Ariane"><a href="/">Équipes</a></nav>
+  main.innerHTML = h`<nav class="crumbs" aria-label="Fil d’Ariane"><a href="#/">Équipes</a></nav>
     <h1>${match.home_name} – ${match.away_name}</h1>
     <p class="lead">${match.poule_label || ""}</p>
     <p class="match-kick"><time datetime="${match.date}">${formatDate(match.date)}</time> · ${formatTime(match.time)}</p>
@@ -585,9 +973,9 @@ async function renderMatch(id) {
     <p>${refs.length ? raw("Arbitre : " + esc(refs.join(" et ")) + ".") : "Arbitre pas encore désigné."}</p>
     <p class="hint">Référence du match : ${match.code}. Elle sert à le retrouver sur le site officiel. La composition des équipes n’est pas affichée ici.</p>
     <div class="actions">
-      <a class="button" href="/calendrier/match/${match.id}.ics">Ajouter ce match au calendrier</a>
-      ${match.home_team_id ? raw(h`<a class="button ghost" href="/equipes/${match.home_team_id}">Équipe à la maison</a>`) : ""}
-      ${match.away_team_id ? raw(h`<a class="button ghost" href="/equipes/${match.away_team_id}">Équipe en déplacement</a>`) : ""}
+      ${calendarTeam && (match.home_team_id === calendarTeam.id || match.away_team_id === calendarTeam.id) ? raw(calendarButton("Ajouter les matchs d’" + calendarTeam.name + " au calendrier")) : ""}
+      ${match.home_team_id ? raw(h`<a class="button ghost" href="#/equipes/${match.home_team_id}">Équipe à la maison</a>`) : ""}
+      ${match.away_team_id ? raw(h`<a class="button ghost" href="#/equipes/${match.away_team_id}">Équipe en déplacement</a>`) : ""}
     </div>
     ${match.poule_url ? raw(h`<p>${raw(ext(match.poule_url, "Page officielle de ce groupe"))}</p>`) : ""}`;
   document.title = match.home_name + " – " + match.away_name + " — Volley 94";
@@ -595,7 +983,7 @@ async function renderMatch(id) {
 
 function showError(error) {
   main.innerHTML = h`<p role="alert">Impossible d’afficher la page. ${error.message || ""}</p>
-    <p><a href="/">Retour aux équipes</a></p>`;
+    <p><a href="#/">Retour aux équipes</a></p>`;
 }
 
 let started = false;
@@ -603,22 +991,26 @@ let started = false;
 async function route() {
   markNav();
   document.title = "Volley 94 — équipes et matchs";
-  const path = location.pathname;
+  const path = hashParts().path;
   try {
-    if (path === "/" || path === "") await renderHome();
+    if (path === "/" || path === "/suivies") await renderHome();
     else if (path === "/clubs") renderClubs();
     else if (/^\/clubs\/\d+$/.test(path)) await renderClub(path.split("/")[2]);
     else if (/^\/equipes\/[A-Za-z0-9_-]+$/.test(path)) await renderTeam(path.split("/")[2]);
     else if (/^\/matchs\/[A-Za-z0-9_-]+$/.test(path)) await renderMatch(path.split("/")[2]);
-    else main.innerHTML = h`<h1>Page introuvable</h1><p>Cette adresse ne correspond à aucune page.</p><p><a href="/">Retour aux équipes</a></p>`;
+    else main.innerHTML = h`<h1>Page introuvable</h1><p>Cette adresse ne correspond à aucune page.</p><p><a href="#/">Retour aux équipes</a></p>`;
   } catch (error) {
     showError(error);
+  }
+  if (path === "/suivies") {
+    const box = document.getElementById("suivies");
+    if (box) box.scrollIntoView();
   }
   if (returnFocus) {
     const wanted = returnFocus;
     returnFocus = null;
     focusPinned(wanted.where, wanted.id);
-  } else if (started && location.hash !== "#suivies") {
+  } else if (started && path !== "/suivies") {
     main.focus();
   }
   started = true;
@@ -629,29 +1021,40 @@ document.body.addEventListener("click", (event) => {
   if (pin) {
     event.preventDefault();
     togglePin(pin.dataset.pin, pin.closest("#suivies") ? "suivies" : "page");
-    return;
   }
-  const link = event.target.closest("a");
-  if (!link || link.target === "_blank") return;
-  const url = new URL(link.href, location.origin);
-  if (url.origin !== location.origin) return;
-  if (url.pathname.startsWith("/calendrier") || url.pathname.startsWith("/static") || url.pathname.startsWith("/api")) return;
-  if (url.pathname === location.pathname && url.hash) return;
-  event.preventDefault();
-  history.pushState(null, "", url.pathname + url.search + url.hash);
-  route();
 });
 
-window.addEventListener("popstate", () => { route(); });
+window.addEventListener("hashchange", () => { route(); });
 
 boot().catch((error) => {
-  main.innerHTML = h`<p role="alert">Les données n’ont pas pu être chargées. ${error.message || ""}</p>
-    <p>Depuis le dossier de l’application : <code>python3 refresh_data.py</code> puis <code>python3 app.py</code>.</p>`;
+  main.innerHTML = h`<p role="alert">Les données n’ont pas pu être chargées. ${error.message || ""}</p>`;
 });
 
 async function boot() {
-  meta = await api("/api/meta");
-  clubs = (await api("/api/clubs")).clubs;
+  const response = await fetch(DATA_URL);
+  if (!response.ok) throw new Error("Fichier de données introuvable.");
+  const blob = await response.json();
+  db = {
+    season: blob.season,
+    generated_at: blob.generated_at,
+    featured_club_id: blob.featured_club_id,
+    departments: blob.department ? [blob.department] : [],
+    sources: blob.sources || [],
+    limits: blob.limits || [],
+    warnings: blob.warnings || [],
+    level_help: blob.level_help || {},
+    clubs: indexById(blob.clubs),
+    poules: indexById(blob.poules),
+    teams: indexById(blob.teams),
+    matches: indexById(blob.matches)
+  };
+  calendarTeam = Object.values(db.teams).find((team) =>
+    team.club_id === SM2_CLUB && team.ffvb_name === SM2_FFVB
+  ) || null;
+  const cal = document.getElementById("lien-calendrier");
+  if (cal && calendarTeam) cal.textContent = "Calendrier " + calendarTeam.name;
+  meta = metaView();
+  clubs = listClubs().clubs;
   renderFooter();
   await route();
 }

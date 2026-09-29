@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import socket
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -22,12 +23,18 @@ class Handler(BaseHTTPRequestHandler):
         path = unquote(parsed.path)
         query = {key: values[0] for key, values in parse_qs(parsed.query).items() if values}
         try:
-            if path.startswith("/api/"):
+            if path in {"/", ""}:
+                self._redirect("/static/")
+            elif path in {"/static", "/static/"}:
+                self._file(INDEX, "text/html; charset=utf-8")
+            elif path.startswith("/api/"):
                 self._api(path, query)
             elif path.startswith("/calendrier/"):
                 self._ics(path)
             elif path.startswith("/static/"):
                 self._static(path[len("/static/"):])
+            elif path.startswith("/data/"):
+                self._data(path[len("/data/"):])
             elif self._is_page(path):
                 self._file(INDEX, "text/html; charset=utf-8")
             else:
@@ -117,8 +124,24 @@ class Handler(BaseHTTPRequestHandler):
             ".js": "text/javascript; charset=utf-8",
             ".svg": "image/svg+xml",
             ".html": "text/html; charset=utf-8",
+            ".ics": "text/calendar; charset=utf-8",
+            ".json": "application/json; charset=utf-8",
         }.get(path.suffix, "application/octet-stream")
         self._file(path, kind)
+
+    def _data(self, rel: str):
+        root = (ROOT / "data").resolve()
+        path = (root / rel).resolve()
+        inside = path == root or root in path.parents
+        if not inside or path.suffix != ".json" or not path.is_file():
+            self._text("Fichier introuvable.", 404)
+            return
+        self._file(path, "application/json; charset=utf-8")
+
+    def _redirect(self, location: str):
+        self.send_response(302)
+        self.send_header("Location", location)
+        self.end_headers()
 
     def _file(self, path: Path, content_type: str):
         raw = path.read_bytes()
@@ -147,13 +170,28 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(raw)
 
 
+def _lan_ip() -> str | None:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.connect(("192.0.2.1", 1))
+        return sock.getsockname()[0]
+    except OSError:
+        return None
+    finally:
+        sock.close()
+
+
 def serve(host="127.0.0.1", port=8765):
     httpd = ThreadingHTTPServer((host, port), Handler)
-    print(f"Volley 94 : http://{host}:{port}", flush=True)
+    shown = _lan_ip() if host == "0.0.0.0" else host
+    print(f"Volley 94 : http://{shown or host}:{port}/static/", flush=True)
     httpd.serve_forever()
 
 
 if __name__ == "__main__":
     import sys
-    chosen = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
-    serve(port=chosen)
+    args = sys.argv[1:]
+    host = "0.0.0.0" if "--wifi" in args else "127.0.0.1"
+    args = [item for item in args if item != "--wifi"]
+    chosen = int(args[0]) if args else 8765
+    serve(host=host, port=chosen)

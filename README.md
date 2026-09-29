@@ -6,12 +6,27 @@ Pas de compte, pas de paiement, pas de notification sur le téléphone.
 
 ## Ouvrir l’application
 
+Page publique, sans compte : https://rahamim-s.github.io/volley-94/
+
+Le calendrier des matchs d’ASA Maisons-Alfort 2 (seniors masculins 2) est le fichier `static/asa-maisons-alfort-2.ics`. Le lien est dans la page. Il ne contient pas les autres équipes du club, ni les autres matchs du 94.
+
+En local :
+
 ```bash
 cd ~/Projects/perso/volley-app
 python3 app.py
 ```
 
-Puis ouvre http://127.0.0.1:8765 dans le navigateur. Le serveur n’écoute que sur cette machine.
+Puis ouvre http://127.0.0.1:8765/static/ dans le navigateur.
+
+Sur le même Wi-Fi, pour ouvrir la page depuis un téléphone :
+
+```bash
+cd ~/Projects/perso/volley-app
+python3 app.py --wifi
+```
+
+Le serveur écoute sur `0.0.0.0`, port 8765. Le terminal affiche l’adresse à ouvrir, du type http://192.168.1.20:8765/static/.
 
 ## Rafraîchir les données
 
@@ -37,7 +52,7 @@ Saison lue sur les pages FFVB (2026/2027 au moment de la première collecte).
 - Leurs équipes en départemental, accession régionale, loisir, jeunes (M11 à M18), régional et pré-national.
 - Le classement de la poule, quand la FFVB l’a publié : points, matchs joués, gagnés, perdus, forfaits, scores de 3-0 à 0-3, sets, points, coefficients. Sinon, la liste des équipes engagées.
 - Les matchs : date, heure, équipes, sets, manches, total de points, salle, arbitres quand ils sont publiés.
-- Un fichier `.ics` pour les prochains matchs d’une équipe, ou pour un seul match. Il s’ouvre avec Calendrier (Apple), Outlook, ou s’importe dans Google Agenda.
+- Un fichier `.ics` pour les matchs d’ASA Maisons-Alfort 2, seniors masculins 2 (libellé FFVB `ASA MAISONS-ALFORT 2`). Il s’ouvre avec Calendrier (Apple), Outlook, ou s’importe dans Google Agenda. Pas d’identifiant de calendrier, pas de contact, pas de licence, pas de feuille de match.
 - « Suivre cette équipe » : la liste reste dans le navigateur, sur cet appareil (`localStorage`).
 
 Le club mis en avant est l’**Association sportive amicale Maisons-Alfort** (ASA VB MA), n° **0946822**. Dans les compétitions le nom est **ASA MAISONS ALFORT**. Ce n’est pas l’ASAS, une autre association, à Paris. Pas de site de club. La salle à domicile la plus fréquente est calculée à partir des matchs (souvent le gymnase Condorcet).
@@ -89,7 +104,7 @@ Les pages de la FFVB et du comité sont publiques, mais ce n’est pas une licen
 
 Pour un autre département : dupliquer le bloc `DEPARTMENT` dans `refresh_data.py` (URL de la liste des clubs du comité, code entité FFVB) et écrire un second fichier, par exemple `data/95.json`. Les poules de ligue sont celles où joue au moins un club de ce département. Si deux fichiers contiennent la même poule de ligue, le dernier chargé remplace l’autre : il faudra dédupliquer par `id` de poule avant de fusionner.
 
-Le serveur (`app.py`) et les pages (`static/`) n’ont pas à changer.
+La page (`static/`) lit `data/94.json` dans le navigateur. `app.py` sert les mêmes fichiers en local.
 
 ## Fichiers
 

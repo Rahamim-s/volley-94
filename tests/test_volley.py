@@ -148,6 +148,9 @@ class UnitTests(unittest.TestCase):
         self.assertIn('id="effacer"', script)
         self.assertNotIn('id="reset"', script)
         self.assertIn("text/calendar", (ROOT / "app.py").read_text(encoding="utf-8"))
+        self.assertIn("asa-maisons-alfort-2.ics", html)
+        self.assertIn('href="style.css"', html)
+        self.assertNotIn('href="/static/', html)
 
 
 class DataTests(unittest.TestCase):
@@ -182,6 +185,50 @@ class DataTests(unittest.TestCase):
         self.assertTrue(all(card["gender"] == "feminin" for card in women["teams"]))
         found = volley_data.list_teams(self.data, q="maison alfort")
         self.assertTrue(any(card["club_id"] == "0946822" for card in found["teams"]))
+
+    def test_public_ics_is_only_sm2(self):
+        team = volley_data.sm2_team(self.data)
+        self.assertIsNotNone(team)
+        self.assertEqual(team["name"], "ASA Maisons-Alfort 2")
+        self.assertEqual(team["ffvb_name"], "ASA MAISONS-ALFORT 2")
+        self.assertEqual(team["club_id"], "0946822")
+        body, filename = volley_data.public_team_calendar(self.data)
+        self.assertEqual(filename, "asa-maisons-alfort-2.ics")
+        raw = (ROOT / "static" / filename).read_bytes()
+        self.assertEqual(raw, body.encode("utf-8"))
+        stored = raw.decode("utf-8")
+        matches = [
+            match for match in self.data["matches"].values()
+            if team["id"] in (match.get("home_team_id"), match.get("away_team_id"))
+        ]
+        self.assertGreater(len(matches), 0)
+        self.assertEqual(stored.count("BEGIN:VEVENT"), len(matches))
+        self.assertIn("X-WR-CALNAME:ASA Maisons-Alfort 2", stored)
+        self.assertNotIn("UID:", stored)
+        self.assertNotIn("@", stored)
+        self.assertNotIn("ffvolley_fdme", stored)
+        self.assertNotIn("fiche_match", stored)
+        sm2_names = set()
+        for match in matches:
+            sm2_names.add(match["home_name"])
+            sm2_names.add(match["away_name"])
+            self.assertIn(match["date"].replace("-", ""), stored)
+            self.assertIn(match["home_name"], stored)
+            self.assertIn(match["away_name"], stored)
+            self.assertNotIn(match["code"], stored)
+            if match.get("referee_1"):
+                self.assertNotIn(match["referee_1"], stored)
+            if match.get("referee_2"):
+                self.assertNotIn(match["referee_2"], stored)
+        others = [
+            match for match in self.data["matches"].values()
+            if "0946822" in (match.get("home_club_id"), match.get("away_club_id"))
+            and team["id"] not in (match.get("home_team_id"), match.get("away_team_id"))
+        ]
+        foreign = next(
+            name for match in others for name in (match["home_name"], match["away_name"]) if name not in sm2_names
+        )
+        self.assertNotIn(foreign, stored)
 
 
 def re_email(text: str):
